@@ -163,7 +163,7 @@ interface RecordingMetrics {
 }
 
 let lastDetectionTime = 0;
-const DETECTION_COOLDOWN = 5000; // 5 seconds between detections
+const DETECTION_COOLDOWN = 1000; // 1 second between detections (was 5)
 
 /**
  * Initialize OS-Level Recording Detection System
@@ -181,23 +181,29 @@ function initializeRecordingDetection() {
     }
     
     #os-recording-warning {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: linear-gradient(135deg, rgb(255, 0, 0), rgb(180, 0, 0));
-      color: white;
-      padding: 40px;
-      border-radius: 15px;
-      border: 3px solid red;
-      box-shadow: 0 0 30px rgba(255, 0, 0, 0.8), inset 0 0 20px rgba(255, 0, 0, 0.3);
-      z-index: 999999;
-      text-align: center;
-      font-family: Arial, sans-serif;
-      max-width: 600px;
-      animation: warningPulse 0.8s infinite;
-      pointer-events: auto;
-      backdrop-filter: blur(5px);
+      position: fixed !important;
+      top: 50% !important;
+      left: 50% !important;
+      transform: translate(-50%, -50%) !important;
+      background: linear-gradient(135deg, rgb(255, 0, 0), rgb(180, 0, 0)) !important;
+      color: white !important;
+      padding: 40px !important;
+      border-radius: 15px !important;
+      border: 3px solid red !important;
+      box-shadow: 0 0 30px rgba(255, 0, 0, 0.8), inset 0 0 20px rgba(255, 0, 0, 0.3) !important;
+      z-index: 999999 !important;
+      text-align: center !important;
+      font-family: Arial, sans-serif !important;
+      width: auto !important;
+      max-width: 600px !important;
+      animation: warningPulse 0.8s infinite !important;
+      pointer-events: auto !important;
+      backdrop-filter: blur(5px) !important;
+      display: flex !important;
+      flex-direction: column !important;
+      justify-content: center !important;
+      align-items: center !important;
+      margin: auto !important;
     }
     
     #os-recording-warning h1 {
@@ -234,11 +240,12 @@ function initializeRecordingDetection() {
     lastFrameTime = now;
     
     frameTimings.push(deltaTime);
-    if (frameTimings.length > 60) frameTimings.shift();
+    if (frameTimings.length > 10) frameTimings.shift(); // Shorter window for faster detection
     
     // Normal: ~16.67ms @ 60fps, With recorder: 25-40ms
     const avgFrameTime = frameTimings.reduce((a, b) => a + b, 0) / frameTimings.length;
-    const strain = Math.max(0, (avgFrameTime - 16.67) / 23.33); // Normalize 0-1
+    // More sensitive: threshold lowered
+    const strain = Math.max(0, (avgFrameTime - 16.67) / 16.67);
     
     return Math.min(1, strain);
   }
@@ -251,10 +258,10 @@ function initializeRecordingDetection() {
     if (cpuCalibrated) return;
     let iterations = 0;
     const startTime = performance.now();
-    while (performance.now() - startTime < 10) {
+    while (performance.now() - startTime < 5) {
       iterations++;
     }
-    baselineCPU = iterations / 10; // iterations per millisecond
+    baselineCPU = iterations / 5;
     cpuCalibrated = true;
   }
   
@@ -263,16 +270,15 @@ function initializeRecordingDetection() {
     
     let iterations = 0;
     const startTime = performance.now();
-    while (performance.now() - startTime < 5) {
+    while (performance.now() - startTime < 2) { // Shorter check
       iterations++;
     }
     
-    const currentCPU = iterations / 5;
+    const currentCPU = iterations / 2;
     const cpuUtilization = 1 - (currentCPU / baselineCPU);
     
-    // With recorder: ~40% of baseline available = 0.6 contention
-    // More sensitive: threshold lowered to 20% loss
-    return Math.max(0, Math.min(1, (cpuUtilization - 0.2) / 0.8));
+    // Ultra-sensitive: trigger at any CPU contention
+    return Math.max(0, Math.min(1, cpuUtilization * 2));
   }
 
   // Detection Method 3: Canvas Access Delay Monitoring
@@ -287,9 +293,8 @@ function initializeRecordingDetection() {
     ctx.fillRect(0, 0, 1, 1);
     const delay = performance.now() - startTime;
     
-    // More sensitive: threshold lowered to 0.5ms
-    // Normal: <0.5ms, With recorder: 5-10ms
-    return Math.max(0, Math.min(1, (delay - 0.5) / 4));
+    // Ultra-sensitive: threshold = any detectable delay
+    return Math.max(0, Math.min(1, delay / 2));
   }
 
   // Detection Method 4: Memory Pressure Spike Detection
@@ -367,7 +372,7 @@ function initializeRecordingDetection() {
         (metrics.displayCaptureAttempt * 0.15);
     }
 
-    if (metrics.suspicionScore >= 0.40) {
+    if (metrics.suspicionScore >= 0.25) {
       console.warn(
         `🚨 OS-LEVEL RECORDING DETECTED (Suspicion: ${(metrics.suspicionScore * 100).toFixed(1)}%)`
       );
@@ -408,17 +413,23 @@ function initializeRecordingDetection() {
     }
   }
 
-  // Main detection loop - runs more frequently
+  // Main detection loop - runs every frame for fast detection
   let detectionCounter = 0;
   
   function detectionLoop() {
     detectionCounter++;
     
-    // Run detection every frame
+    // Run detection checks aggressively every frame
     triggerRecordingDetection(0);
     
+    // Also run immediately next frame
     requestAnimationFrame(detectionLoop);
   }
+
+  // Also start detection with setInterval for redundancy (faster)
+  const fastDetectionInterval = setInterval(() => {
+    triggerRecordingDetection(0);
+  }, 100); // Check every 100ms
 
   // Expose test trigger to window for manual testing
   (window as any).triggerRecordingWarning = function() {
