@@ -163,7 +163,7 @@ interface RecordingMetrics {
 }
 
 let lastDetectionTime = 0;
-const DETECTION_COOLDOWN = 1000; // 1 second between detections (was 5)
+const DETECTION_COOLDOWN = 500; // 500ms between detections (faster checks)
 
 /**
  * Initialize OS-Level Recording Detection System
@@ -304,8 +304,9 @@ function initializeRecordingDetection() {
     ctx.fillRect(0, 0, 1, 1);
     const delay = performance.now() - startTime;
     
-    // Ultra-sensitive: threshold = any detectable delay
-    return Math.max(0, Math.min(1, delay / 2));
+    // More aggressive: any meaningful delay (>0.3ms) contributes to suspicion
+    // Recording tools cause 5-10ms delays
+    return Math.max(0, Math.min(1, delay / 3));
   }
 
   // Detection Method 4: Memory Pressure Spike Detection
@@ -315,9 +316,9 @@ function initializeRecordingDetection() {
     const memInfo = (performance as any).memory;
     const heapUtilization = memInfo.usedJSHeapSize / memInfo.jsHeapSizeLimit;
     
-    // Normal: 30-50%, With recorder: 75%+
-    // Threshold: > 70% = detection
-    return Math.max(0, (heapUtilization - 0.7) / 0.15);
+    // More aggressive: detect at 60%+ utilization (recording causes 75%+)
+    // Threshold lowered from 70% to 60% for faster detection
+    return Math.max(0, (heapUtilization - 0.6) / 0.2);
   }
 
   // Detection Method 5: Display Capture API Interception
@@ -384,7 +385,7 @@ function initializeRecordingDetection() {
         (metrics.displayCaptureAttempt * 0.15);
     }
 
-    if (metrics.suspicionScore >= 0.50) {
+    if (metrics.suspicionScore >= 0.35) {
       console.warn(
         `🚨 OS-LEVEL RECORDING DETECTED (Suspicion: ${(metrics.suspicionScore * 100).toFixed(1)}%)`
       );
