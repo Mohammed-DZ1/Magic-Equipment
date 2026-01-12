@@ -170,6 +170,16 @@ const DETECTION_COOLDOWN = 1000; // 1 second between detections (was 5)
  * Analyzes 6 independent signals to detect screen recording activity
  */
 function initializeRecordingDetection() {
+  // Clean up any leftover elements from previous sessions
+  const oldWarning = document.getElementById('os-recording-warning');
+  if (oldWarning) oldWarning.remove();
+  
+  const oldBlackscreen = document.getElementById('os-recording-blackscreen');
+  if (oldBlackscreen) oldBlackscreen.remove();
+
+  // Reset global state
+  lastDetectionTime = 0;
+
   console.log('🔍 OS Recording Detection System initialized');
 
   // Add CSS for warning UI
@@ -499,6 +509,30 @@ function initializeRecordingDetection() {
 document.addEventListener('DOMContentLoaded', () => {
   initializeInvisibleShield();
   initializeRecordingDetection();
+});
+
+// Reset detection system on page reload
+window.addEventListener('beforeunload', () => {
+  lastDetectionTime = 0;
+  
+  // Clean up any warning elements
+  const warning = document.getElementById('os-recording-warning');
+  if (warning) warning.remove();
+  
+  // Clean up black screen
+  const blackScreen = document.getElementById('os-recording-blackscreen');
+  if (blackScreen) blackScreen.remove();
+  
+  console.log('🔄 Detection system reset for next session');
+});
+
+// Also reset on visibility change (tab focus)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    // Page became visible again - reset detection state
+    lastDetectionTime = 0;
+    console.log('🔄 Detection system reset - page regained focus');
+  }
 });
 
 const rootElement = document.getElementById('root');
