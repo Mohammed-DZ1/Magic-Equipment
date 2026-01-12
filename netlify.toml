@@ -1,0 +1,30 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Environment variables for Netlify Functions
+[context.production.environment]
+  GEMINI_API_KEY = "AIzaSyDtbnxTNqyxh67E8UUuaDfXiBwBWZVcH9M"
+
+[context.deploy-preview.environment]
+  GEMINI_API_KEY = "AIzaSyDtbnxTNqyxh67E8UUuaDfXiBwBWZVcH9M"
+
+[context.branch-deploy.environment]
+  GEMINI_API_KEY = "AIzaSyDtbnxTNqyxh67E8UUuaDfXiBwBWZVcH9M"
+
+[[headers]]
+  for = "/*.mp4"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    Content-Type = "video/mp4"
+    Access-Control-Allow-Origin = "*"
+
+[[redirects]]
+  from = "/Hero.mp4"
+  to = "/Hero.mp4"
+  status = 200
+
+[[redirects]]
+  from = "/hero-mobile.mp4"
+  to = "/hero-mobile.mp4"
+  status = 200

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="#f59e0b"/>
+  
+  <!-- Simple crane/equipment icon -->
+  <g fill="none" stroke="#18181b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Crane arm horizontal -->
+    <line x1="20" y1="40" x2="80" y2="40"/>
+    
+    <!-- Crane hook -->
+    <circle cx="70" cy="50" r="4" fill="#18181b"/>
+    <line x1="70" y1="54" x2="70" y2="75"/>
+    
+    <!-- Crane tower vertical -->
+    <line x1="30" y1="40" x2="30" y2="75"/>
+    
+    <!-- Equipment box/container at bottom -->
+    <rect x="25" y="75" width="20" height="15" fill="none"/>
+    <line x1="25" y1="75" x2="45" y2="75"/>
+  </g>
+</svg>
