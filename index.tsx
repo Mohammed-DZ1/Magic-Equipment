@@ -162,8 +162,79 @@ interface RecordingMetrics {
   timestamp: string;
 }
 
+interface SystemPerformanceBaseline {
+  initialized: boolean;
+  averageCPU: number;
+  peakMemory: number;
+  hasSlowNetwork: boolean;
+  networkLatency: number;
+  effectiveNetworkType: string;
+  devicePerformanceLevel: 'high' | 'medium' | 'low';
+}
+
 let lastDetectionTime = 0;
 const DETECTION_COOLDOWN = 500; // 500ms between detections (faster checks)
+const systemPerformanceBaseline: SystemPerformanceBaseline = {
+  initialized: false,
+  averageCPU: 0,
+  peakMemory: 0,
+  hasSlowNetwork: false,
+  networkLatency: 0,
+  effectiveNetworkType: 'unknown',
+  devicePerformanceLevel: 'medium',
+};
+
+/**
+ * Detect network latency and device performance characteristics
+ */
+function detectNetworkAndDevicePerformance() {
+  // Detect network latency
+  const connection = (navigator as any).connection;
+  if (connection) {
+    systemPerformanceBaseline.effectiveNetworkType = connection.effectiveType || 'unknown';
+    systemPerformanceBaseline.networkLatency = connection.rtt || 0; // Round trip time in ms
+    systemPerformanceBaseline.hasSlowNetwork = 
+      connection.effectiveType === '3g' || 
+      connection.effectiveType === '4g' ||
+      connection.effectiveType === 'slow-2g' ||
+      connection.effectiveType === '2g' ||
+      (connection.rtt && connection.rtt > 100); // >100ms latency = slow
+    console.log(`📡 Network: ${systemPerformanceBaseline.effectiveNetworkType} (RTT: ${systemPerformanceBaseline.networkLatency}ms)`);
+  }
+
+  // Profile system performance at startup
+  if (systemPerformanceBaseline.initialized) return;
+  
+  // Calibrate CPU baseline with extended test
+  let cpuSamples: number[] = [];
+  for (let sample = 0; sample < 3; sample++) {
+    let iterations = 0;
+    const startTime = performance.now();
+    while (performance.now() - startTime < 10) {
+      iterations++;
+    }
+    cpuSamples.push(iterations / 10);
+  }
+  systemPerformanceBaseline.averageCPU = cpuSamples.reduce((a, b) => a + b, 0) / cpuSamples.length;
+  
+  // Calibrate memory baseline
+  if ((performance as any).memory) {
+    systemPerformanceBaseline.peakMemory = (performance as any).memory.jsHeapSizeLimit;
+  }
+
+  // Classify device performance level
+  const iterationsPerMs = systemPerformanceBaseline.averageCPU;
+  if (iterationsPerMs > 1000000) {
+    systemPerformanceBaseline.devicePerformanceLevel = 'high';
+  } else if (iterationsPerMs > 500000) {
+    systemPerformanceBaseline.devicePerformanceLevel = 'medium';
+  } else {
+    systemPerformanceBaseline.devicePerformanceLevel = 'low';
+  }
+
+  systemPerformanceBaseline.initialized = true;
+  console.log(`⚙️ System Performance: ${systemPerformanceBaseline.devicePerformanceLevel} (CPU: ${iterationsPerMs.toFixed(0)} iter/ms, Network: ${systemPerformanceBaseline.hasSlowNetwork ? 'SLOW' : 'FAST'})`);
+}
 
 /**
  * Initialize OS-Level Recording Detection System
@@ -179,6 +250,9 @@ function initializeRecordingDetection() {
 
   // Reset global state
   lastDetectionTime = 0;
+
+  // Detect network and device performance characteristics
+  detectNetworkAndDevicePerformance();
 
   console.log('🔍 OS Recording Detection System initialized');
 
@@ -241,6 +315,7 @@ function initializeRecordingDetection() {
 
   // Detection Method 1: Frame Timing Strain Analysis
   let frameTimings: number[] = [];
+  let frameVariances: number[] = [];
   let frameCount = 0;
   let lastFrameTime = performance.now();
   
@@ -252,13 +327,35 @@ function initializeRecordingDetection() {
     frameTimings.push(deltaTime);
     if (frameTimings.length > 10) frameTimings.shift(); // Shorter window for faster detection
     
-    // Normal: ~16.67ms @ 60fps, With recorder: 25-40ms
-    const avgFrameTime = frameTimings.reduce((a, b) => a + b, 0) / frameTimings.length;
-    // LESS aggressive: only trigger on extreme delays (>30ms sustained)
-    // This avoids false positives from normal browser jank
-    const strain = Math.max(0, (avgFrameTime - 30) / 40); // Only significant delays matter
+    // Calculate variance - low variance = sustained (recording), high variance = intermittent (network/jank)
+    if (frameTimings.length >= 3) {
+      const avgFrameTime = frameTimings.reduce((a, b) => a + b, 0) / frameTimings.length;
+      const variance = frameTimings.reduce((sum, time) => sum + Math.pow(time - avgFrameTime, 2), 0) / frameTimings.length;
+      frameVariances.push(variance);
+      if (frameVariances.length > 5) frameVariances.shift();
+    }
     
-    return Math.min(1, strain);
+    // Normal: ~16.67ms @ 60fps, With recorder: 25-40ms SUSTAINED
+    const avgFrameTime = frameTimings.reduce((a, b) => a + b, 0) / frameTimings.length;
+    const avgVariance = frameVariances.length > 0 
+      ? frameVariances.reduce((a, b) => a + b, 0) / frameVariances.length 
+      : 0;
+    
+    // LESS aggressive: only trigger on extreme, SUSTAINED delays (>30ms)
+    // If variance is high (>20), it's intermittent (network), not recording
+    const isIntermittent = avgVariance > 20;
+    const isSustained = avgFrameTime > 30 && avgVariance < 20;
+    
+    if (isIntermittent || systemPerformanceBaseline.hasSlowNetwork) {
+      // Network jitter - reduce strain penalty
+      return Math.max(0, (avgFrameTime - 40) / 50) * 0.3; // Only 30% weight due to network
+    } else if (isSustained) {
+      // Sustained delay - likely recording
+      return Math.max(0, (avgFrameTime - 30) / 40);
+    } else {
+      // Normal variation - minimal penalty
+      return Math.max(0, (avgFrameTime - 25) / 50) * 0.1;
+    }
   }
 
   // Detection Method 2: CPU Contention Detection
@@ -267,6 +364,12 @@ function initializeRecordingDetection() {
   
   function calibrateBaslineCPU() {
     if (cpuCalibrated) return;
+    // Use system baseline if available
+    if (systemPerformanceBaseline.initialized && systemPerformanceBaseline.averageCPU > 0) {
+      baselineCPU = systemPerformanceBaseline.averageCPU;
+      cpuCalibrated = true;
+      return;
+    }
     let iterations = 0;
     const startTime = performance.now();
     while (performance.now() - startTime < 5) {
@@ -288,8 +391,12 @@ function initializeRecordingDetection() {
     const currentCPU = iterations / 2;
     const cpuUtilization = 1 - (currentCPU / baselineCPU);
     
-    // Ultra-sensitive: trigger at any CPU contention
-    return Math.max(0, Math.min(1, cpuUtilization * 2));
+    // Reduce sensitivity on low-end systems - they naturally have higher contention
+    const contention = systemPerformanceBaseline.devicePerformanceLevel === 'low' 
+      ? cpuUtilization * 1.2  // 20% less sensitive on low-end
+      : cpuUtilization * 2;
+    
+    return Math.max(0, Math.min(1, contention));
   }
 
   // Detection Method 3: Canvas Access Delay Monitoring
@@ -316,9 +423,11 @@ function initializeRecordingDetection() {
     const memInfo = (performance as any).memory;
     const heapUtilization = memInfo.usedJSHeapSize / memInfo.jsHeapSizeLimit;
     
-    // More aggressive: detect at 60%+ utilization (recording causes 75%+)
-    // Threshold lowered from 70% to 60% for faster detection
-    return Math.max(0, (heapUtilization - 0.6) / 0.2);
+    // Baseline threshold: 60% (recording causes 75%+)
+    // If slow network detected, reduce sensitivity - network can cause garbage collection
+    const baseThreshold = systemPerformanceBaseline.hasSlowNetwork ? 0.70 : 0.60;
+    
+    return Math.max(0, (heapUtilization - baseThreshold) / 0.2);
   }
 
   // Detection Method 5: Display Capture API Interception
@@ -344,7 +453,7 @@ function initializeRecordingDetection() {
     }
   }
 
-  // Detection Method 6: Multi-Factor Suspicion Scoring
+  // Detection Method 6: Multi-Factor Suspicion Scoring with Device Awareness
   function calculateSuspicion(): RecordingMetrics {
     const metrics: RecordingMetrics = {
       frameTimingStrain: analyzeFrameTiming(),
@@ -356,14 +465,34 @@ function initializeRecordingDetection() {
       timestamp: new Date().toISOString(),
     };
 
-    // Weighted suspicion score - reduced frame timing weight
-    metrics.suspicionScore = 
-      (metrics.frameTimingStrain * 0.10) +  // Reduced from 0.25 - less reliable
-      (metrics.cpuContention * 0.25) +       // Increased - more reliable
-      (metrics.canvasAccessDelay * 0.25) +   // Increased - more reliable
-      (metrics.memoryPressure * 0.25) +      // Increased - more reliable
-      (metrics.displayCaptureAttempt * 0.15); // Direct API attempt - highest confidence
+    // Adaptive weighting based on network and device characteristics
+    let ftWeight = 0.10;
+    let cpuWeight = 0.25;
+    let caWeight = 0.25;
+    let mpWeight = 0.25;
+    let dcWeight = 0.15;
 
+    // If slow network detected, reduce frame timing and memory weight (false positive sources)
+    if (systemPerformanceBaseline.hasSlowNetwork) {
+      ftWeight = 0.05;  // Reduce by 50% - network causes frame jitter
+      mpWeight = 0.20;  // Reduce by 20% - network can spike memory
+      cpuWeight = 0.30; // Increase - more reliable on slow networks
+      caWeight = 0.30;  // Increase - more reliable on slow networks
+    }
+
+    // If low-end device detected, further reduce frame timing weight
+    if (systemPerformanceBaseline.devicePerformanceLevel === 'low') {
+      ftWeight *= 0.5;  // Additional 50% reduction
+      cpuWeight = Math.min(0.35, cpuWeight + 0.1); // Don't over-penalize low-end
+    }
+
+    // Weighted suspicion score - adaptive based on device characteristics
+    metrics.suspicionScore = 
+      (metrics.frameTimingStrain * ftWeight) +
+      (metrics.cpuContention * cpuWeight) +
+      (metrics.canvasAccessDelay * caWeight) +
+      (metrics.memoryPressure * mpWeight) +
+      (metrics.displayCaptureAttempt * dcWeight);
 
     return metrics;
   }
