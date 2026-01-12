@@ -263,16 +263,16 @@ function initializeRecordingDetection() {
     
     let iterations = 0;
     const startTime = performance.now();
-    while (performance.now() - startTime < 10) {
+    while (performance.now() - startTime < 5) {
       iterations++;
     }
     
-    const currentCPU = iterations / 10;
+    const currentCPU = iterations / 5;
     const cpuUtilization = 1 - (currentCPU / baselineCPU);
     
     // With recorder: ~40% of baseline available = 0.6 contention
-    // Threshold: > 40% loss = detection
-    return Math.max(0, cpuUtilization - 0.4) / 0.6;
+    // More sensitive: threshold lowered to 20% loss
+    return Math.max(0, Math.min(1, (cpuUtilization - 0.2) / 0.8));
   }
 
   // Detection Method 3: Canvas Access Delay Monitoring
@@ -287,9 +287,9 @@ function initializeRecordingDetection() {
     ctx.fillRect(0, 0, 1, 1);
     const delay = performance.now() - startTime;
     
+    // More sensitive: threshold lowered to 0.5ms
     // Normal: <0.5ms, With recorder: 5-10ms
-    // Threshold: > 2ms = detection
-    return Math.max(0, Math.min(1, (delay - 2) / 8));
+    return Math.max(0, Math.min(1, (delay - 0.5) / 4));
   }
 
   // Detection Method 4: Memory Pressure Spike Detection
@@ -367,7 +367,7 @@ function initializeRecordingDetection() {
         (metrics.displayCaptureAttempt * 0.15);
     }
 
-    if (metrics.suspicionScore >= 0.65) {
+    if (metrics.suspicionScore >= 0.40) {
       console.warn(
         `🚨 OS-LEVEL RECORDING DETECTED (Suspicion: ${(metrics.suspicionScore * 100).toFixed(1)}%)`
       );
@@ -390,13 +390,14 @@ function initializeRecordingDetection() {
       blackScreen.id = 'os-recording-blackscreen';
       blackScreen.style.cssText = `
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: #000;
-        z-index: 999998;
-        opacity: 0.5;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        background: #000 !important;
+        z-index: 999998 !important;
+        opacity: 0.8 !important;
+        display: block !important;
       `;
       document.body.appendChild(blackScreen);
 
@@ -407,11 +408,28 @@ function initializeRecordingDetection() {
     }
   }
 
-  // Main detection loop
+  // Main detection loop - runs more frequently
+  let detectionCounter = 0;
+  
   function detectionLoop() {
+    detectionCounter++;
+    
+    // Run detection every frame
     triggerRecordingDetection(0);
+    
     requestAnimationFrame(detectionLoop);
   }
+
+  // Expose test trigger to window for manual testing
+  (window as any).triggerRecordingWarning = function() {
+    console.log('🧪 Manual recording warning trigger');
+    triggerRecordingDetection(1.0);
+  };
+
+  // Expose debug metrics to window
+  (window as any).getDetectionMetrics = function() {
+    return calculateSuspicion();
+  };
 
   // Show OS Recording Warning UI
   function showOSRecordingWarning() {
@@ -431,11 +449,21 @@ function initializeRecordingDetection() {
     }
 
     warning.style.display = 'block';
+    warning.style.visibility = 'visible';
+    warning.style.opacity = '1';
+
+    console.log('🚨 Warning UI displayed');
 
     // Auto-hide after 8 seconds
-    setTimeout(() => {
-      if (warning) warning.style.display = 'none';
+    const hideTimer = setTimeout(() => {
+      if (warning) {
+        warning.style.display = 'none';
+        warning.style.visibility = 'hidden';
+      }
     }, 8000);
+
+    // Expose cancel timer for manual control
+    (warning as any).hideTimer = hideTimer;
   }
 
   // Initialize detection systems
