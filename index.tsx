@@ -392,10 +392,10 @@ function initializeRecordingDetection() {
     const currentCPU = iterations / 2;
     const cpuUtilization = 1 - (currentCPU / baselineCPU);
     
-    // Reduce sensitivity on low-end systems - they naturally have higher contention
+    // Reduce sensitivity on low-end systems but increase base sensitivity for recording detection
     const contention = systemPerformanceBaseline.devicePerformanceLevel === 'low' 
-      ? cpuUtilization * 1.2  // 20% less sensitive on low-end
-      : cpuUtilization * 2;
+      ? cpuUtilization * 1.5  // 50% multiplier on low-end
+      : cpuUtilization * 2.5; // 150% multiplier on normal/high-end (more sensitive)
     
     return Math.max(0, Math.min(1, contention));
   }
@@ -413,16 +413,16 @@ function initializeRecordingDetection() {
     ctx.fillRect(0, 0, 1, 1);
     const delay = performance.now() - startTime;
     
-    // Recording tools cause 5-10ms delays - normal canvas ops are <0.5ms
+    // Recording tools cause 3-15ms delays - normal canvas ops are <0.5ms
     // Track history to require sustained delays, not random spikes
     canvasDelayHistory.push(delay);
     if (canvasDelayHistory.length > 5) canvasDelayHistory.shift();
     
     const avgCanvasDelay = canvasDelayHistory.reduce((a, b) => a + b, 0) / canvasDelayHistory.length;
     
-    // Only report suspicion if SUSTAINED delays >2ms (not normal <0.5ms variance)
-    // Require significant sustained delay - recording causes consistent 5-10ms
-    return Math.max(0, Math.min(1, (avgCanvasDelay - 2) / 8));
+    // Lowered threshold: sustained delays >1.5ms indicate recording (more realistic)
+    // Recording causes consistent 3-15ms, normal ops are <0.5ms with rare spikes to 1ms
+    return Math.max(0, Math.min(1, (avgCanvasDelay - 1.5) / 10));
   }
 
   // Detection Method 4: Memory Pressure Spike Detection
@@ -507,6 +507,7 @@ function initializeRecordingDetection() {
   }
 
   // Trigger detection and show warning
+  let debugCounter = 0;
   function triggerRecordingDetection(displayCaptureConfidence: number) {
     const now = Date.now();
     if (now - lastDetectionTime < DETECTION_COOLDOWN) return;
@@ -528,11 +529,19 @@ function initializeRecordingDetection() {
     
     // Need MULTIPLE consecutive high suspicion readings to trigger
     const avgSuspicion = suspicionHistory.reduce((a, b) => a + b, 0) / suspicionHistory.length;
-    const recentHighCount = suspicionHistory.filter(s => s > 0.60).length;
+    const recentHighCount = suspicionHistory.filter(s => s > 0.55).length; // Lowered from 0.60 to 0.55
     
-    // Require: average >0.55 AND at least 3 out of last 4 readings >0.60 AND current >0.65
-    // This ensures sustained signal, not random spikes
-    if (avgSuspicion >= 0.55 && recentHighCount >= 3 && metrics.suspicionScore >= 0.65) {
+    // Debug logging - show every 30 checks (every ~9 seconds at 300ms interval)
+    debugCounter++;
+    if (debugCounter % 30 === 0) {
+      console.log(
+        `📊 Detection metrics [${debugCounter/30}s]: Suspicion=${(metrics.suspicionScore * 100).toFixed(1)}% | Avg=${(avgSuspicion * 100).toFixed(1)}% | High=${recentHighCount}/4 | FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)}`
+      );
+    }
+    
+    // Lowered thresholds: average >0.50 AND at least 2 out of last 4 readings >0.55 AND current >0.60
+    // More reasonable requirements for sustained recording signal
+    if (avgSuspicion >= 0.50 && recentHighCount >= 2 && metrics.suspicionScore >= 0.60) {
       lastDetectionTime = now;
       
       console.warn(
