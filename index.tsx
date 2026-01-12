@@ -254,8 +254,9 @@ function initializeRecordingDetection() {
     
     // Normal: ~16.67ms @ 60fps, With recorder: 25-40ms
     const avgFrameTime = frameTimings.reduce((a, b) => a + b, 0) / frameTimings.length;
-    // More sensitive: threshold lowered
-    const strain = Math.max(0, (avgFrameTime - 16.67) / 16.67);
+    // LESS aggressive: only trigger on extreme delays (>30ms sustained)
+    // This avoids false positives from normal browser jank
+    const strain = Math.max(0, (avgFrameTime - 30) / 40); // Only significant delays matter
     
     return Math.min(1, strain);
   }
@@ -354,13 +355,14 @@ function initializeRecordingDetection() {
       timestamp: new Date().toISOString(),
     };
 
-    // Weighted suspicion score
+    // Weighted suspicion score - reduced frame timing weight
     metrics.suspicionScore = 
-      (metrics.frameTimingStrain * 0.25) +
-      (metrics.cpuContention * 0.2) +
-      (metrics.canvasAccessDelay * 0.2) +
-      (metrics.memoryPressure * 0.2) +
-      (metrics.displayCaptureAttempt * 0.15);
+      (metrics.frameTimingStrain * 0.10) +  // Reduced from 0.25 - less reliable
+      (metrics.cpuContention * 0.25) +       // Increased - more reliable
+      (metrics.canvasAccessDelay * 0.25) +   // Increased - more reliable
+      (metrics.memoryPressure * 0.25) +      // Increased - more reliable
+      (metrics.displayCaptureAttempt * 0.15); // Direct API attempt - highest confidence
+
 
     return metrics;
   }
@@ -375,14 +377,14 @@ function initializeRecordingDetection() {
     if (displayCaptureConfidence > 0) {
       metrics.displayCaptureAttempt = displayCaptureConfidence;
       metrics.suspicionScore = 
-        (metrics.frameTimingStrain * 0.25) +
-        (metrics.cpuContention * 0.2) +
-        (metrics.canvasAccessDelay * 0.2) +
-        (metrics.memoryPressure * 0.2) +
+        (metrics.frameTimingStrain * 0.10) +  // Reduced weight
+        (metrics.cpuContention * 0.25) +
+        (metrics.canvasAccessDelay * 0.25) +
+        (metrics.memoryPressure * 0.25) +     // Increased weight
         (metrics.displayCaptureAttempt * 0.15);
     }
 
-    if (metrics.suspicionScore >= 0.25) {
+    if (metrics.suspicionScore >= 0.50) {
       console.warn(
         `🚨 OS-LEVEL RECORDING DETECTED (Suspicion: ${(metrics.suspicionScore * 100).toFixed(1)}%)`
       );
