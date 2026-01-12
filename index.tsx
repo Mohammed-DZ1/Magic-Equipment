@@ -173,7 +173,8 @@ interface SystemPerformanceBaseline {
 }
 
 let lastDetectionTime = 0;
-const DETECTION_COOLDOWN = 500; // 500ms between detections (faster checks)
+const DETECTION_COOLDOWN = 1000; // 1000ms between detections (avoid random spikes)
+let suspicionHistory: number[] = []; // Track suspicion over time for confirmation
 const systemPerformanceBaseline: SystemPerformanceBaseline = {
   initialized: false,
   averageCPU: 0,
@@ -400,6 +401,7 @@ function initializeRecordingDetection() {
   }
 
   // Detection Method 3: Canvas Access Delay Monitoring
+  let canvasDelayHistory: number[] = [];
   function analyzeCanvasDelay(): number {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -411,9 +413,16 @@ function initializeRecordingDetection() {
     ctx.fillRect(0, 0, 1, 1);
     const delay = performance.now() - startTime;
     
-    // More aggressive: any meaningful delay (>0.3ms) contributes to suspicion
-    // Recording tools cause 5-10ms delays
-    return Math.max(0, Math.min(1, delay / 3));
+    // Recording tools cause 5-10ms delays - normal canvas ops are <0.5ms
+    // Track history to require sustained delays, not random spikes
+    canvasDelayHistory.push(delay);
+    if (canvasDelayHistory.length > 5) canvasDelayHistory.shift();
+    
+    const avgCanvasDelay = canvasDelayHistory.reduce((a, b) => a + b, 0) / canvasDelayHistory.length;
+    
+    // Only report suspicion if SUSTAINED delays >2ms (not normal <0.5ms variance)
+    // Require significant sustained delay - recording causes consistent 5-10ms
+    return Math.max(0, Math.min(1, (avgCanvasDelay - 2) / 8));
   }
 
   // Detection Method 4: Memory Pressure Spike Detection
@@ -501,7 +510,6 @@ function initializeRecordingDetection() {
   function triggerRecordingDetection(displayCaptureConfidence: number) {
     const now = Date.now();
     if (now - lastDetectionTime < DETECTION_COOLDOWN) return;
-    lastDetectionTime = now;
 
     const metrics = calculateSuspicion();
     if (displayCaptureConfidence > 0) {
@@ -514,12 +522,24 @@ function initializeRecordingDetection() {
         (metrics.displayCaptureAttempt * 0.15);
     }
 
-    if (metrics.suspicionScore >= 0.35) {
+    // Track suspicion history - require sustained high suspicion, not random spikes
+    suspicionHistory.push(metrics.suspicionScore);
+    if (suspicionHistory.length > 4) suspicionHistory.shift();
+    
+    // Need MULTIPLE consecutive high suspicion readings to trigger
+    const avgSuspicion = suspicionHistory.reduce((a, b) => a + b, 0) / suspicionHistory.length;
+    const recentHighCount = suspicionHistory.filter(s => s > 0.60).length;
+    
+    // Require: average >0.55 AND at least 3 out of last 4 readings >0.60 AND current >0.65
+    // This ensures sustained signal, not random spikes
+    if (avgSuspicion >= 0.55 && recentHighCount >= 3 && metrics.suspicionScore >= 0.65) {
+      lastDetectionTime = now;
+      
       console.warn(
-        `🚨 OS-LEVEL RECORDING DETECTED (Suspicion: ${(metrics.suspicionScore * 100).toFixed(1)}%)`
+        `🚨 OS-LEVEL RECORDING DETECTED (Suspicion: ${(metrics.suspicionScore * 100).toFixed(1)}% | Avg: ${(avgSuspicion * 100).toFixed(1)}%)`
       );
       console.warn(
-        `Metrics: FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)}`
+        `Metrics: FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)} | High readings: ${recentHighCount}/4`
       );
 
       // Show warning UI
@@ -555,23 +575,11 @@ function initializeRecordingDetection() {
     }
   }
 
-  // Main detection loop - runs every frame for fast detection
-  let detectionCounter = 0;
-  
-  function detectionLoop() {
-    detectionCounter++;
-    
-    // Run detection checks aggressively every frame
+  // Main detection loop - runs every 300ms to avoid catching random variance
+  // Slower intervals allow proper averaging of metrics
+  const detectionInterval = setInterval(() => {
     triggerRecordingDetection(0);
-    
-    // Also run immediately next frame
-    requestAnimationFrame(detectionLoop);
-  }
-
-  // Also start detection with setInterval for redundancy (faster)
-  const fastDetectionInterval = setInterval(() => {
-    triggerRecordingDetection(0);
-  }, 100); // Check every 100ms
+  }, 300); // Check every 300ms - balances detection speed vs false positives
 
   // Expose test trigger to window for manual testing
   (window as any).triggerRecordingWarning = function() {
@@ -621,7 +629,6 @@ function initializeRecordingDetection() {
 
   // Initialize detection systems
   setupDisplayCaptureInterception();
-  requestAnimationFrame(detectionLoop);
 
   console.log('✅ OS Recording Detection System active:');
   console.log('  ✓ Frame timing strain analysis');
