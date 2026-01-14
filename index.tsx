@@ -394,8 +394,8 @@ function initializeRecordingDetection() {
     
     // Reduce sensitivity on low-end systems but increase base sensitivity for recording detection
     const contention = systemPerformanceBaseline.devicePerformanceLevel === 'low' 
-      ? cpuUtilization * 1.5  // 50% multiplier on low-end
-      : cpuUtilization * 2.5; // 150% multiplier on normal/high-end (more sensitive)
+      ? cpuUtilization * 2.0  // 2.0x multiplier on low-end
+      : cpuUtilization * 3.5; // 3.5x multiplier on normal/high-end (very sensitive)
     
     return Math.max(0, Math.min(1, contention));
   }
@@ -420,9 +420,9 @@ function initializeRecordingDetection() {
     
     const avgCanvasDelay = canvasDelayHistory.reduce((a, b) => a + b, 0) / canvasDelayHistory.length;
     
-    // Lowered threshold: sustained delays >1.5ms indicate recording (more realistic)
-    // Recording causes consistent 3-15ms, normal ops are <0.5ms with rare spikes to 1ms
-    return Math.max(0, Math.min(1, (avgCanvasDelay - 1.5) / 10));
+    // Lowered threshold: sustained delays >1.0ms indicate recording (very sensitive now)
+    // Recording causes consistent 3-15ms, normal ops are <0.5ms
+    return Math.max(0, Math.min(1, (avgCanvasDelay - 1.0) / 10));
   }
 
   // Detection Method 4: Memory Pressure Spike Detection
@@ -529,19 +529,19 @@ function initializeRecordingDetection() {
     
     // Need MULTIPLE consecutive high suspicion readings to trigger
     const avgSuspicion = suspicionHistory.reduce((a, b) => a + b, 0) / suspicionHistory.length;
-    const recentHighCount = suspicionHistory.filter(s => s > 0.55).length; // Lowered from 0.60 to 0.55
+    const recentHighCount = suspicionHistory.filter(s => s > 0.45).length; // Lowered from 0.55 to 0.45
     
-    // Debug logging - show every 30 checks (every ~9 seconds at 300ms interval)
+    // Debug logging - show every 10 checks (every ~3 seconds at 300ms interval) for faster diagnosis
     debugCounter++;
-    if (debugCounter % 30 === 0) {
+    if (debugCounter % 10 === 0) {
       console.log(
-        `📊 Detection metrics [${debugCounter/30}s]: Suspicion=${(metrics.suspicionScore * 100).toFixed(1)}% | Avg=${(avgSuspicion * 100).toFixed(1)}% | High=${recentHighCount}/4 | FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)}`
+        `📊 [${(debugCounter * 0.3).toFixed(1)}s] Suspicion=${(metrics.suspicionScore * 100).toFixed(1)}% | Avg=${(avgSuspicion * 100).toFixed(1)}% | High=${recentHighCount}/4 | FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)}`
       );
     }
     
-    // Lowered thresholds: average >0.50 AND at least 2 out of last 4 readings >0.55 AND current >0.60
-    // More reasonable requirements for sustained recording signal
-    if (avgSuspicion >= 0.50 && recentHighCount >= 2 && metrics.suspicionScore >= 0.60) {
+    // Lowered thresholds: average >0.45 AND at least 1 out of last 4 readings >0.45 AND current >0.55
+    // Much more lenient - just need to see sustained signal approaching threshold
+    if (avgSuspicion >= 0.45 && recentHighCount >= 1 && metrics.suspicionScore >= 0.55) {
       lastDetectionTime = now;
       
       console.warn(
