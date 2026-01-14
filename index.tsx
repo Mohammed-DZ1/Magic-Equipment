@@ -316,8 +316,6 @@ function initializeRecordingDetection() {
 
   // Detection Method 1: Frame Timing Strain Analysis
   let frameTimings: number[] = [];
-  let frameVariances: number[] = [];
-  let frameCount = 0;
   let lastFrameTime = performance.now();
   
   function analyzeFrameTiming(): number {
@@ -326,37 +324,14 @@ function initializeRecordingDetection() {
     lastFrameTime = now;
     
     frameTimings.push(deltaTime);
-    if (frameTimings.length > 10) frameTimings.shift(); // Shorter window for faster detection
+    if (frameTimings.length > 10) frameTimings.shift();
     
-    // Calculate variance - low variance = sustained (recording), high variance = intermittent (network/jank)
-    if (frameTimings.length >= 3) {
-      const avgFrameTime = frameTimings.reduce((a, b) => a + b, 0) / frameTimings.length;
-      const variance = frameTimings.reduce((sum, time) => sum + Math.pow(time - avgFrameTime, 2), 0) / frameTimings.length;
-      frameVariances.push(variance);
-      if (frameVariances.length > 5) frameVariances.shift();
-    }
-    
-    // Normal: ~16.67ms @ 60fps, With recorder: 25-40ms SUSTAINED
+    // Simple: just check average frame time
+    // Normal: ~16.67ms @ 60fps, Recording: 20-40ms
     const avgFrameTime = frameTimings.reduce((a, b) => a + b, 0) / frameTimings.length;
-    const avgVariance = frameVariances.length > 0 
-      ? frameVariances.reduce((a, b) => a + b, 0) / frameVariances.length 
-      : 0;
     
-    // LESS aggressive: only trigger on extreme, SUSTAINED delays (>30ms)
-    // If variance is high (>20), it's intermittent (network), not recording
-    const isIntermittent = avgVariance > 20;
-    const isSustained = avgFrameTime > 30 && avgVariance < 20;
-    
-    if (isIntermittent || systemPerformanceBaseline.hasSlowNetwork) {
-      // Network jitter - reduce strain penalty
-      return Math.max(0, (avgFrameTime - 40) / 50) * 0.3; // Only 30% weight due to network
-    } else if (isSustained) {
-      // Sustained delay - likely recording
-      return Math.max(0, (avgFrameTime - 30) / 40);
-    } else {
-      // Normal variation - minimal penalty
-      return Math.max(0, (avgFrameTime - 25) / 50) * 0.1;
-    }
+    // Much more sensitive: penalize any frame >18ms
+    return Math.max(0, Math.min(1, (avgFrameTime - 18) / 25));
   }
 
   // Detection Method 2: CPU Contention Detection
@@ -420,9 +395,9 @@ function initializeRecordingDetection() {
     
     const avgCanvasDelay = canvasDelayHistory.reduce((a, b) => a + b, 0) / canvasDelayHistory.length;
     
-    // Lowered threshold: sustained delays >1.0ms indicate recording (very sensitive now)
+    // VERY aggressive: sustained delays >0.5ms indicate possible recording
     // Recording causes consistent 3-15ms, normal ops are <0.5ms
-    return Math.max(0, Math.min(1, (avgCanvasDelay - 1.0) / 10));
+    return Math.max(0, Math.min(1, (avgCanvasDelay - 0.5) / 15));
   }
 
   // Detection Method 4: Memory Pressure Spike Detection
@@ -529,19 +504,19 @@ function initializeRecordingDetection() {
     
     // Need MULTIPLE consecutive high suspicion readings to trigger
     const avgSuspicion = suspicionHistory.reduce((a, b) => a + b, 0) / suspicionHistory.length;
-    const recentHighCount = suspicionHistory.filter(s => s > 0.45).length; // Lowered from 0.55 to 0.45
+    const recentHighCount = suspicionHistory.filter(s => s > 0.35).length; // MUCH lower threshold
     
-    // Debug logging - show every 10 checks (every ~3 seconds at 300ms interval) for faster diagnosis
+    // Debug logging - show every 5 checks (every ~0.5 seconds at 100ms interval) for FAST diagnosis
     debugCounter++;
-    if (debugCounter % 10 === 0) {
+    if (debugCounter % 5 === 0) {
       console.log(
-        `📊 [${(debugCounter * 0.3).toFixed(1)}s] Suspicion=${(metrics.suspicionScore * 100).toFixed(1)}% | Avg=${(avgSuspicion * 100).toFixed(1)}% | High=${recentHighCount}/4 | FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)}`
+        `📊 [${(debugCounter * 0.1).toFixed(1)}s] Suspicion=${(metrics.suspicionScore * 100).toFixed(1)}% | Avg=${(avgSuspicion * 100).toFixed(1)}% | High=${recentHighCount}/4 | FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)}`
       );
     }
     
-    // Lowered thresholds: average >0.45 AND at least 1 out of last 4 readings >0.45 AND current >0.55
-    // Much more lenient - just need to see sustained signal approaching threshold
-    if (avgSuspicion >= 0.45 && recentHighCount >= 1 && metrics.suspicionScore >= 0.55) {
+    // CRITICAL: Much more aggressive triggering: average >0.35 AND current >0.45
+    // Only need ONE reading above 0.35 to start counting
+    if (avgSuspicion >= 0.35 && recentHighCount >= 1 && metrics.suspicionScore >= 0.45) {
       lastDetectionTime = now;
       
       console.warn(
@@ -584,11 +559,11 @@ function initializeRecordingDetection() {
     }
   }
 
-  // Main detection loop - runs every 300ms to avoid catching random variance
-  // Slower intervals allow proper averaging of metrics
+  // Main detection loop - run every 100ms for faster detection
+  // Slower intervals were causing missed signals
   const detectionInterval = setInterval(() => {
     triggerRecordingDetection(0);
-  }, 300); // Check every 300ms - balances detection speed vs false positives
+  }, 100); // Check every 100ms (10 Hz) - much faster response
 
   // Expose test trigger to window for manual testing
   (window as any).triggerRecordingWarning = function() {
