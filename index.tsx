@@ -175,8 +175,6 @@ interface SystemPerformanceBaseline {
 let lastDetectionTime = 0;
 const DETECTION_COOLDOWN = 1000; // 1000ms between detections (avoid random spikes)
 let suspicionHistory: number[] = []; // Track suspicion over time for confirmation
-let detectionPatternStartTime: number | null = null; // Track when sustained pattern began
-const SUSTAINED_PATTERN_DURATION = 15000; // 15 seconds required to confirm recording
 const systemPerformanceBaseline: SystemPerformanceBaseline = {
   initialized: false,
   averageCPU: 0,
@@ -518,70 +516,48 @@ function initializeRecordingDetection() {
       `[${debugCounter}] S=${(metrics.suspicionScore * 100).toFixed(1)}% Avg=${(avgSuspicion * 100).toFixed(1)}% | FT=${metrics.frameTimingStrain.toFixed(3)} CPU=${metrics.cpuContention.toFixed(3)} CA=${metrics.canvasAccessDelay.toFixed(3)} MP=${metrics.memoryPressure.toFixed(3)}`
     );
     
-    // TIME-GATED DETECTION: Require sustained pattern for 10 seconds
-    // Recording = constant load for duration. Internet lag/loading = brief spike that recovers
-    const patternDetected = avgSuspicion >= 0.20 && recentHighCount >= 1 && metrics.suspicionScore >= 0.20;
-    
-    if (patternDetected) {
-      // Pattern detected - start or continue timer
-      if (detectionPatternStartTime === null) {
-        detectionPatternStartTime = now;
-        console.log('[DETECTION] 🕐 Pattern started - timing sustained load (need 15 sec)');
-      }
+    // CRITICAL: Much more aggressive triggering: average >0.20 AND current >0.20
+    // Only need ONE reading above 0.35 to start counting
+    if (avgSuspicion >= 0.20 && recentHighCount >= 1 && metrics.suspicionScore >= 0.20) {
+      lastDetectionTime = now;
       
-      const patternDuration = now - detectionPatternStartTime;
-      
-      // After 15 seconds of sustained pattern = CONFIRMED RECORDING
-      if (patternDuration >= SUSTAINED_PATTERN_DURATION) {
-        lastDetectionTime = now;
-        
-        console.warn(
-          `🚨 OS-LEVEL RECORDING DETECTED (Sustain: ${(patternDuration / 1000).toFixed(1)}s | S: ${(metrics.suspicionScore * 100).toFixed(1)}% | Avg: ${(avgSuspicion * 100).toFixed(1)}%)`
-        );
-        console.warn(
-          `Metrics: FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)} | High readings: ${recentHighCount}/4`
-        );
+      console.warn(
+        `🚨 OS-LEVEL RECORDING DETECTED (Suspicion: ${(metrics.suspicionScore * 100).toFixed(1)}% | Avg: ${(avgSuspicion * 100).toFixed(1)}%)`
+      );
+      console.warn(
+        `Metrics: FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)} | High readings: ${recentHighCount}/4`
+      );
 
-        // Show warning UI
-        showOSRecordingWarning();
+      // Show warning UI
+      showOSRecordingWarning();
 
-        // Dispatch custom event for external handlers
-        document.dispatchEvent(
-          new CustomEvent('os-recording-detected', {
-            detail: metrics,
-          })
-        );
+      // Dispatch custom event for external handlers
+      document.dispatchEvent(
+        new CustomEvent('os-recording-detected', {
+          detail: metrics,
+        })
+      );
 
-        // Black screen activation
-        const blackScreen = document.createElement('div');
-        blackScreen.id = 'os-recording-blackscreen';
-        blackScreen.style.cssText = `
-          position: fixed;
-          top: 0 !important;
-          left: 0 !important;
-          width: 100% !important;
-          height: 100% !important;
-          background: #000 !important;
-          z-index: 999998 !important;
-          opacity: 0.8 !important;
-          display: block !important;
-        `;
-        document.body.appendChild(blackScreen);
+      // Black screen activation
+      const blackScreen = document.createElement('div');
+      blackScreen.id = 'os-recording-blackscreen';
+      blackScreen.style.cssText = `
+        position: fixed;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        background: #000 !important;
+        z-index: 999998 !important;
+        opacity: 0.8 !important;
+        display: block !important;
+      `;
+      document.body.appendChild(blackScreen);
 
-        // Remove black screen after 10 seconds
-        setTimeout(() => {
-          blackScreen.remove();
-        }, 10000);
-        
-        return; // Exit after detection
-      }
-    } else {
-      // Pattern broken - reset timer
-      if (detectionPatternStartTime !== null) {
-        const beforeReset = (now - detectionPatternStartTime) / 1000;
-        console.log(`[DETECTION] ⏹ Pattern broken after ${beforeReset.toFixed(1)}s - resetting`);
-      }
-      detectionPatternStartTime = null;
+      // Remove black screen after 10 seconds
+      setTimeout(() => {
+        blackScreen.remove();
+      }, 10000);
     }
   }
 
