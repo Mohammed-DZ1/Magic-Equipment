@@ -516,9 +516,9 @@ function initializeRecordingDetection() {
       `[${debugCounter}] S=${(metrics.suspicionScore * 100).toFixed(1)}% Avg=${(avgSuspicion * 100).toFixed(1)}% | FT=${metrics.frameTimingStrain.toFixed(3)} CPU=${metrics.cpuContention.toFixed(3)} CA=${metrics.canvasAccessDelay.toFixed(3)} MP=${metrics.memoryPressure.toFixed(3)}`
     );
     
-    // CRITICAL: Much more aggressive triggering: average >0.20 AND current >0.20
-    // Only need ONE reading above 0.35 to start counting
-    if (avgSuspicion >= 0.20 && recentHighCount >= 1 && metrics.suspicionScore >= 0.20) {
+    // CRITICAL: Instant trigger on spike - don't wait for history average
+    // Trigger when CURRENT reading spikes + recent history confirms pattern
+    if (recentHighCount >= 1 && metrics.suspicionScore >= 0.20) {
       lastDetectionTime = now;
       
       console.warn(
