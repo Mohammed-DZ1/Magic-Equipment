@@ -520,39 +520,29 @@ function initializeRecordingDetection() {
     
     // TIME-GATED DETECTION: Require sustained pattern for 10 seconds
     // Recording = constant load for duration. Internet lag/loading = brief spike that recovers
+    const patternDetected = avgSuspicion >= 0.20 && recentHighCount >= 1 && metrics.suspicionScore >= 0.20;
     
-    // STRICT: Initial pattern detection - need clear signal
-    const patternStartCondition = avgSuspicion >= 0.20 && recentHighCount >= 1 && metrics.suspicionScore >= 0.20;
-    
-    // LENIENT: Keep timer running if ANY high readings (sustains through brief dips)
-    const patternSustainCondition = recentHighCount >= 1;
-    
-    if (patternStartCondition) {
-      // Pattern detected - start timer if not already running
+    if (patternDetected) {
+      // Pattern detected - start or continue timer
       if (detectionPatternStartTime === null) {
         detectionPatternStartTime = now;
         console.log('[DETECTION] 🕐 Pattern started - timing sustained load (need 10 sec)');
       }
-    }
-    
-    // Continue or reset timer based on sustained pattern
-    if (detectionPatternStartTime !== null) {
+      
       const patternDuration = now - detectionPatternStartTime;
       
-      if (patternSustainCondition) {
-        // Pattern sustained
-        if (patternDuration >= SUSTAINED_PATTERN_DURATION) {
-          // ✅ CONFIRMED: 10 seconds of sustained recording signal
-          lastDetectionTime = now;
-          
-          console.warn(
-            `🚨 OS-LEVEL RECORDING DETECTED (Sustain: ${(patternDuration / 1000).toFixed(1)}s | S: ${(metrics.suspicionScore * 100).toFixed(1)}% | Avg: ${(avgSuspicion * 100).toFixed(1)}%)`
-          );
-          console.warn(
-            `Metrics: FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)} | High readings: ${recentHighCount}/4`
-          );
+      // After 10 seconds of sustained pattern = CONFIRMED RECORDING
+      if (patternDuration >= SUSTAINED_PATTERN_DURATION) {
+        lastDetectionTime = now;
+        
+        console.warn(
+          `🚨 OS-LEVEL RECORDING DETECTED (Sustain: ${(patternDuration / 1000).toFixed(1)}s | S: ${(metrics.suspicionScore * 100).toFixed(1)}% | Avg: ${(avgSuspicion * 100).toFixed(1)}%)`
+        );
+        console.warn(
+          `Metrics: FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)} | High readings: ${recentHighCount}/4`
+        );
 
-          // Show warning UI
+        // Show warning UI
         showOSRecordingWarning();
 
         // Dispatch custom event for external handlers
@@ -584,17 +574,14 @@ function initializeRecordingDetection() {
         }, 10000);
         
         return; // Exit after detection
-        } else {
-          // Pattern dipped but sustaining - continue timer
-          const sustainedSecs = (patternDuration / 1000).toFixed(1);
-          console.log(`[DETECTION] 📊 Sustaining... ${sustainedSecs}s/${(SUSTAINED_PATTERN_DURATION / 1000).toFixed(0)}s`);
-        }
-      } else {
-        // Pattern completely broken - reset timer
+      }
+    } else {
+      // Pattern broken - reset timer
+      if (detectionPatternStartTime !== null) {
         const beforeReset = (now - detectionPatternStartTime) / 1000;
         console.log(`[DETECTION] ⏹ Pattern broken after ${beforeReset.toFixed(1)}s - resetting`);
-        detectionPatternStartTime = null;
       }
+      detectionPatternStartTime = null;
     }
   }
 
