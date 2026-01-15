@@ -46,29 +46,29 @@ The OS Recording Detection System is a **two-stage defense mechanism** that prot
 │         Browser Page Load (index.tsx)                   │
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
-│  ┌─ INVISIBLE SHIELD ────────────────────────┐        │
-│  │ • Canvas quantum noise generation          │        │
-│  │ • 8-layer codec disruption (0.001% opacity)│       │
-│  │ • Continuous frame injection               │        │
-│  │ • Imperceptible to users                   │        │
-│  └───────────────────────────────────────────┘        │
+│  ┌─ INVISIBLE SHIELD ─────────────────────────┐         │
+│  │ • Canvas quantum noise generation          │         │
+│  │ • 8-layer codec disruption (0.001% opacity)│         │
+│  │ • Continuous frame injection               │         │
+│  │ • Imperceptible to users                   │         │
+│  └────────────────────────────────────────────┘         │
 │                                                         │
-│  ┌─ RECORDING DETECTION ─────────────────────┐        │
-│  │ • Frame timing strain analysis             │        │
-│  │ • CPU contention detection                 │        │
-│  │ • Canvas delay monitoring                  │        │
-│  │ • Memory pressure spike detection          │        │
-│  │ • Display Capture API interception         │        │
-│  │ • Network/device performance adaptation    │        │
+│  ┌─ RECORDING DETECTION ───────────────────────┐        │
+│  │ • Frame timing strain analysis              │        │
+│  │ • CPU contention detection                  │        │
+│  │ • Canvas delay monitoring                   │        │
+│  │ • Memory pressure spike detection           │        │
+│  │ • Display Capture API interception          │        │
+│  │ • Network/device performance adaptation     │        │
 │  │                                             │        │
-│  │ ↓ Suspicion Scoring (weighted formula)     │        │
+│  │ ↓ Suspicion Scoring (weighted formula)      │        │
 │  │                                             │        │
-│  │ ↓ Sustained Signal Detection (4-frame)     │        │
+│  │ ↓ Sustained Signal Detection (4-frame)      │        │
 │  │                                             │        │
-│  │ ↓ Trigger on: Avg>0.50 + High≥2/4 + Cur>0.60│     │
+│  │ ↓ Trigger on: Avg>0.50 + High≥2/4 + Cur>0.60│        │
 │  │                                             │        │
-│  │ ↓ Show Black Screen + Warning UI           │        │
-│  └───────────────────────────────────────────┘        │
+│  │ ↓ Show Black Screen + Warning UI            │        │
+│  └─────────────────────────────────────────────┘        │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
