@@ -517,8 +517,8 @@ function initializeRecordingDetection() {
     );
     
     // CRITICAL: Instant trigger on spike - don't wait for history average
-    // Trigger when CURRENT reading spikes + recent history confirms SUSTAINED pattern (3+ high readings = confirmed recording)
-    if (recentHighCount >= 3 && metrics.suspicionScore >= 0.20) {
+    // Trigger when ALL 4 history readings are high (sustained recording strain, not internet lag/loading)
+    if (recentHighCount >= 4 && metrics.suspicionScore >= 0.20) {
       lastDetectionTime = now;
       
       console.warn(
