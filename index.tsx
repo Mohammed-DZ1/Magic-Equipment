@@ -522,7 +522,7 @@ function initializeRecordingDetection() {
     // Recording = constant load for duration. Internet lag/loading = brief spike that recovers
     
     // STRICT: Initial pattern detection - need clear signal
-    const patternStartCondition = avgSuspicion >= 0.20 && recentHighCount >= 2 && metrics.suspicionScore >= 0.20;
+    const patternStartCondition = avgSuspicion >= 0.20 && recentHighCount >= 1 && metrics.suspicionScore >= 0.20;
     
     // LENIENT: Keep timer running if ANY high readings (sustains through brief dips)
     const patternSustainCondition = recentHighCount >= 1;
