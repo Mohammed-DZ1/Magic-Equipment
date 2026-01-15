@@ -176,7 +176,7 @@ let lastDetectionTime = 0;
 const DETECTION_COOLDOWN = 1000; // 1000ms between detections (avoid random spikes)
 let suspicionHistory: number[] = []; // Track suspicion over time for confirmation
 let detectionPatternStartTime: number | null = null; // Track when sustained pattern began
-const SUSTAINED_PATTERN_DURATION = 7000; // 7 seconds required to confirm recording
+const SUSTAINED_PATTERN_DURATION = 10000; // 10 seconds required to confirm recording
 const systemPerformanceBaseline: SystemPerformanceBaseline = {
   initialized: false,
   averageCPU: 0,
