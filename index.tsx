@@ -331,7 +331,9 @@ function initializeRecordingDetection() {
     const avgFrameTime = frameTimings.reduce((a, b) => a + b, 0) / frameTimings.length;
     
     // Much more sensitive: penalize any frame >18ms
-    return Math.max(0, Math.min(1, (avgFrameTime - 18) / 25));
+    const result = Math.max(0, Math.min(1, (avgFrameTime - 18) / 25));
+    if (result > 0.05) console.log(`  FT[${result.toFixed(2)}]: avg=${avgFrameTime.toFixed(2)}ms`);
+    return result;
   }
 
   // Detection Method 2: CPU Contention Detection
@@ -395,9 +397,11 @@ function initializeRecordingDetection() {
     
     const avgCanvasDelay = canvasDelayHistory.reduce((a, b) => a + b, 0) / canvasDelayHistory.length;
     
-    // VERY aggressive: sustained delays >0.5ms indicate possible recording
-    // Recording causes consistent 3-15ms, normal ops are <0.5ms
-    return Math.max(0, Math.min(1, (avgCanvasDelay - 0.5) / 15));
+    // EMERGENCY FIX: Lower threshold from 0.5ms to 0.1ms
+    // Recording tools cause consistent 3-15ms, normal ops <0.5ms
+    // Using 0.1ms threshold to catch more edge cases
+    const result = Math.max(0, Math.min(1, (avgCanvasDelay - 0.1) / 15));
+    return result;
   }
 
   // Detection Method 4: Memory Pressure Spike Detection
@@ -506,13 +510,11 @@ function initializeRecordingDetection() {
     const avgSuspicion = suspicionHistory.reduce((a, b) => a + b, 0) / suspicionHistory.length;
     const recentHighCount = suspicionHistory.filter(s => s > 0.35).length; // MUCH lower threshold
     
-    // Debug logging - show every 5 checks (every ~0.5 seconds at 100ms interval) for FAST diagnosis
+    // DIAGNOSTIC: Log EVERY check to see exact metric values (not just every 5th)
     debugCounter++;
-    if (debugCounter % 5 === 0) {
-      console.log(
-        `📊 [${(debugCounter * 0.1).toFixed(1)}s] Suspicion=${(metrics.suspicionScore * 100).toFixed(1)}% | Avg=${(avgSuspicion * 100).toFixed(1)}% | High=${recentHighCount}/4 | FT=${metrics.frameTimingStrain.toFixed(2)} CPU=${metrics.cpuContention.toFixed(2)} CA=${metrics.canvasAccessDelay.toFixed(2)} MP=${metrics.memoryPressure.toFixed(2)}`
-      );
-    }
+    console.log(
+      `[${debugCounter}] S=${(metrics.suspicionScore * 100).toFixed(1)}% Avg=${(avgSuspicion * 100).toFixed(1)}% | FT=${metrics.frameTimingStrain.toFixed(3)} CPU=${metrics.cpuContention.toFixed(3)} CA=${metrics.canvasAccessDelay.toFixed(3)} MP=${metrics.memoryPressure.toFixed(3)}`
+    );
     
     // CRITICAL: Much more aggressive triggering: average >0.35 AND current >0.45
     // Only need ONE reading above 0.35 to start counting
